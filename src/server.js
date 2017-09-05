@@ -65,8 +65,13 @@ app.use(function *(next) {
         `Instantiating PhantomJS with page size ${size.width}x${size.height}`
     );
 
+    const t = Date.now();
+
     yield pool.use(instance => instance.createPage())
-        .then(page => this.state.page = page)
+        .then(page => {
+            logger.verbose(`Instantiated after ${Date.now() - t}ms`);
+            this.state.page = page;
+        })
         .then(() => this.state.page.property('viewportSize', size));
 
     yield next;
@@ -86,10 +91,18 @@ app.use(function *(next) {
     }
 
     logger.verbose(`Attempting to load ${url}`);
+    const t = Date.now();
 
     yield this.state.page.open(url)
         .then(status => status === 'success')
-        .then(loaded => loaded || this.throw(404));
+        .then(loaded => {
+            if (!loaded) {
+                this.throw(404);
+            }
+
+            logger.verbose(`Loading finished in ${Date.now() - t}ms`);
+            return loaded;
+        });
 
     yield next;
 });
@@ -148,6 +161,8 @@ app.use(function *(next) {
 
     logger.info(`Rendering screenshot of ${url} to ${format}`);
 
+    const t = Date.now();
+
     if (format === 'pdf') {
         const tmpFile = tmp.fileSync({ postfix: '.pdf'});
 
@@ -157,11 +172,16 @@ app.use(function *(next) {
 
                 // Delete the temp file after served to client
                 this.body.on('close', () => tmpFile.removeCallback());
+
+                logger.verbose(`Rendering finished in ${Date.now() - t}ms`);
             });
     }
     else {
         yield this.state.page.renderBase64(format)
-            .then((imageData) => this.body = Buffer.from(imageData, 'base64'));
+            .then((imageData) => {
+                this.body = Buffer.from(imageData, 'base64');
+                logger.verbose(`Rendering finished in ${Date.now() - t}ms`);
+            });
     }
 });
 
